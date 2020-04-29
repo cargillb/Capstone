@@ -40,6 +40,7 @@ def load_user(user_id):
     password = result[0][2]
     email = result[0][3]
     user = User(id, username, password, email)
+    db_connection.close() # close connection before returning
     return user
 
 class User(UserMixin):
@@ -83,9 +84,11 @@ def login():
                 login_user(user)
                 flash('You have been logged in!', 'success')
                 next_page = request.args.get('next')
+                db_connection.close() # close connection before returning
                 return redirect(url_for('home'))
 
         flash('Login Unsuccessful. Please check username and password', 'danger')
+        db_connection.close() # close connection before returning
         return render_template('login.html')
 
 
@@ -122,6 +125,7 @@ def register():
         rtn = execute_query(db_connection, query).fetchall()  # run query
         if (any(username in i for i in rtn)):
             flash('Username already taken, please try again', 'danger')
+            db_connection.close() # close connection before returning
             return render_template('accountCreation.html')
 
         # make sure email is unique
@@ -129,6 +133,7 @@ def register():
         rtn = execute_query(db_connection, query).fetchall()  # run query
         if (any(email in i for i in rtn)):
             flash('Email already registered, please try again', 'danger')
+            db_connection.close() # close connection before returning
             return render_template('accountCreation.html')
 
         query = ('INSERT INTO `users` '
@@ -138,6 +143,7 @@ def register():
         execute_query(db_connection, query, data)
 
         flash('Your account has been created. You may now log in.', 'success')
+        db_connection.close() # close connection before returning
         return redirect(url_for('login'))
 
 
@@ -159,6 +165,7 @@ def home():
     rtn = execute_query(db_connection, query).fetchall()  # run query
     context['rows'] = rtn  # rtn = list data
 
+    db_connection.close() # close connection before returning
     return render_template('home.html', context=context)
 
 
@@ -181,6 +188,7 @@ def add_list():
 
     # should probably have some sort of error checking here to be sure it was added
 
+    db_connection.close() # close connection before returning
     return redirect(url_for('home'))
 
 
@@ -194,6 +202,7 @@ def delete_list(list_id):
     query = "DELETE FROM `lists` WHERE `list_id` = '{}'".format(list_id)
     execute_query(db_connection, query)
     flash('The list has been deleted.', 'info')
+    db_connection.close() # close connection before returning
     return redirect(url_for('home'))
 
 
@@ -209,11 +218,13 @@ def update_list(list_id):
         query = "SELECT * FROM `lists` WHERE `list_id` ='{}'".format(list_id)  # get info of list
         rtn = execute_query(db_connection, query).fetchall()  # run query
         context = {'list_id': rtn[0][0], 'list_name': rtn[0][2], 'list_desc': rtn[0][3]}
+        db_connection.close() # close connection before returning
         return render_template('update_list.html', context=context)
     elif request.method == 'POST':
         query = "UPDATE `lists` SET `name` = %s, `description` = %s WHERE `list_id` = %s"
         data = (request.form['list_name'], request.form['list_desc'], list_id)
         rtn = execute_query(db_connection, query, data)
+        db_connection.close() # close connection before returning
         return redirect('/home')
 
 
@@ -230,6 +241,7 @@ def tasks(list_id):
     rtn = execute_query(db_connection, query).fetchall()
     if rtn[0][0] != current_user.id:
         print(rtn)
+        db_connection.close() # close connection before returning
         return redirect(url_for('invalid_access'))
 
     context = {}  # create context dictionary
@@ -246,6 +258,7 @@ def tasks(list_id):
     rtn = execute_query(db_connection, query).fetchall()  # run query
     context['taskTypes'] = rtn
 
+    db_connection.close() # close connection before returning
     return render_template('tasks.html', context=context)
 
 
@@ -274,6 +287,7 @@ def add_task():
     #Source for commit: https://dev.mysql.com/doc/connector-python/en/connector-python-api-mysqlconnection-commit.html
     db_connection.commit()
 
+    db_connection.close() # close connection before returning
     return redirect("/tasks/" + inputs['list_id'])
 
 
@@ -285,6 +299,7 @@ def delete_task(task_id, list_id):
     db_connection = connect_to_database()
     query = "DELETE FROM `tasks` WHERE `task_id` = '{}'".format(task_id)
     execute_query(db_connection, query).fetchall()
+    db_connection.close() # close connection before returning
     return redirect('/tasks/' + list_id)
 
 
@@ -305,6 +320,7 @@ def update_task(list_id, task_id):
         rtn = execute_query(db_connection, query).fetchall()  # run query
         context['taskTypes'] = rtn
 
+        db_connection.close() # close connection before returning
         return render_template('update_task.html', context=context)
     elif request.method == 'POST':
         query = "UPDATE `tasks` SET `dataType_id` = %s, `description` = %s, `completed` = %s WHERE `task_id` = %s"
