@@ -1,9 +1,10 @@
+#import mysql.connector
+#from mysql.connector import Error
 from flask import Flask, render_template, request, redirect, url_for, flash
 from db_connector.db_connector import connect_to_database, execute_query
 from flask_login import LoginManager, login_user, login_required, current_user, logout_user, UserMixin
 
 import sys  # to print to stderr
-
 
 
 #create the web application
@@ -15,7 +16,7 @@ webapp.secret_key = b'_5#y2L"F4Q8z\n\xec]/'
 # flask-login
 '''
     Logged-in user parameters are accessible using current_user.[parameter]
-    
+
     current_user.id
     current_user.username
     current_user.password
@@ -67,9 +68,16 @@ def login():
         password = request.form['password']
 
         db_connection = connect_to_database()  # connect to db
-        query = "SELECT * FROM users WHERE `username` ='{}'".format(username)
-        result = execute_query(db_connection, query).fetchall()  # run query
+
+        #Old query
+        #query = "SELECT * FROM users WHERE `username`='{}' AND pword='{}'".format(username, password)
+        #source: https://pynative.com/python-mysql-execute-stored-procedure/ AND https://www.python.org/dev/peps/pep-0249/#cursor-methods
+        cursor = db_connection.cursor()
+        cursor.callproc('returnUserInfo', [username, ])
+        result = cursor.fetchall()
+
         if result:
+            #added this as validation that user input matched query results
             if username == result[0][1] and password == result[0][2]:
                 user = User(user_id=result[0][0], username=result[0][1], password=result[0][2], email=result[0][3])
                 login_user(user)
@@ -163,8 +171,15 @@ def add_list():
     db_connection = connect_to_database()
     inputs = request.form.to_dict(flat=True)  # get form inputs from request
 
-    query = "INSERT INTO `lists` (`user_id`, `name`, `description`) VALUES ('{}', \"{}\", \"{}\")".format(inputs['user_id'], inputs['list_name'], inputs['list_desc'])
-    execute_query(db_connection, query) # execute query
+    # Old query = """INSERT INTO `lists` (`user_id`, `name`, `description`) VALUES
+    #('{}', \"{}\", \"{}\")".format(inputs['user_id'], inputs['list_name'], inputs['list_desc'])"""
+    #execute_query(db_connection, query) # execute query
+    cursor = db_connection.cursor()
+    cursor.callproc('addList', [inputs['user_id'], inputs['list_name'], inputs ['list_desc'], ])
+    #Source for commit: https://dev.mysql.com/doc/connector-python/en/connector-python-api-mysqlconnection-commit.html
+    db_connection.commit()
+
+    # should probably have some sort of error checking here to be sure it was added
 
     return redirect(url_for('home'))
 
@@ -229,7 +244,7 @@ def tasks(list_id):
 
     query = "SELECT * from dataTypes" # get list of all types of tasks
     rtn = execute_query(db_connection, query).fetchall()  # run query
-    context['taskTypes'] = rtn 
+    context['taskTypes'] = rtn
 
     return render_template('tasks.html', context=context)
 
@@ -251,8 +266,13 @@ def add_task():
     db_connection = connect_to_database()
     inputs = request.form.to_dict(flat=True)  # get form inputs from request
 
-    query = "INSERT INTO `tasks` (`list_id`, `dataType_id`, `description`, `completed`) VALUES ('{}', '{}', \"{}\", '{}')".format(inputs['list_id'], inputs['task_type'], inputs['task_desc'], inputs['task_comp'])
-    execute_query(db_connection, query).fetchall()  # execute query
+    #query = """INSERT INTO `tasks` (`list_id`, `dataType_id`, `description`, `completed`)
+    #VALUES ('{}', '{}', \"{}\", '{}')".format(inputs['list_id'], inputs['task_type'], inputs['task_desc'], inputs['task_comp'])"""
+    #execute_query(db_connection, query).fetchall()  # execute query
+    cursor = db_connection.cursor()
+    cursor.callproc('addTask', [inputs['list_id'], inputs['task_type'], inputs['task_desc'], inputs['task_comp'], ])
+    #Source for commit: https://dev.mysql.com/doc/connector-python/en/connector-python-api-mysqlconnection-commit.html
+    db_connection.commit()
 
     return redirect("/tasks/" + inputs['list_id'])
 
@@ -283,7 +303,7 @@ def update_task(list_id, task_id):
 
         query = "SELECT * from dataTypes" # get list of all types of tasks
         rtn = execute_query(db_connection, query).fetchall()  # run query
-        context['taskTypes'] = rtn 
+        context['taskTypes'] = rtn
 
         return render_template('update_task.html', context=context)
     elif request.method == 'POST':
