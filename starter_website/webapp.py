@@ -250,8 +250,9 @@ def tasks(list_id):
     rtn = execute_query(db_connection, query).fetchall()  # run query
     context = {'list_name': rtn[0][0], 'list_desc': rtn[0][1], 'list_id': list_id}
 
-    query = "SELECT tasks.task_id, tasks.list_id, tasks.dataType_id, tasks.description, tasks.completed, dataTypes.name FROM `tasks` JOIN `dataTypes` ON tasks.dataType_id = dataTypes.dataType_id WHERE list_id = '{}'".format(list_id)  # get info of tasks on list
-    rtn = execute_query(db_connection, query).fetchall()  # run query
+    cursor = db_connection.cursor()
+    cursor.callproc('returnTasks', [list_id, ])
+    rtn = cursor.fetchall()
     context['rows'] = rtn  # rtn = tasks data
 
     query = "SELECT * from dataTypes" # get list of all types of tasks
