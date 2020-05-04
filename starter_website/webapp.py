@@ -54,6 +54,20 @@ class User(UserMixin):
         self.task_id = None
 
 
+#test if password meets complexity requirements
+def complex_password(password):
+
+    if len(password) >= 8 and \
+            any(char.isdigit() for char in password) and \
+            any(char.islower() for char in password) and\
+            any(char.isupper() for char in password) and \
+            any(char.islower() for char in password) and \
+            any(not char.isalnum() for char in password):
+        return True
+    else:
+        return False
+
+
 #-------------------------------- Login Routes --------------------------------
 @webapp.route('/')
 @webapp.route('/login', methods=['GET', 'POST'])
@@ -113,6 +127,10 @@ def register():
         username = request.form['username']
         password = request.form['password']
         confirm_password = request.form['confirm_password']
+
+        if not complex_password(password):
+            flash('Password requirements not met', 'danger')
+            return render_template('accountCreation.html')
 
         if password != confirm_password:
             flash('Password confirmation does not match password', 'danger')
