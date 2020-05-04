@@ -3,3 +3,4 @@
 env/
 Procfile
 db_credentials.py
+*.sql
