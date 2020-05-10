@@ -236,7 +236,6 @@ def passwordReset():
         return redirect(url_for('home'))
 
     if request.method == 'GET':
-
         return render_template('passwordReset.html')
 
     if request.method == 'POST':
