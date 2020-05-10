@@ -12,7 +12,7 @@ import sys  # to print to stderr
 
 webapp = Flask(__name__)
 webapp.secret_key = b'_5#y2L"F4Q8z\n\xec]/'
-#TODO: reset to minutes--> sets the session timeout to 5 minutes
+# sets the session timeout to 5 minutes
 webapp.permanent_session_lifetime = timedelta(minutes=5)
 
 # flask-login
@@ -30,13 +30,13 @@ webapp.permanent_session_lifetime = timedelta(minutes=5)
 login_manager = LoginManager()
 login_manager.init_app(webapp)
 login_manager.login_view = '/login'
-#message and cateogry that are flashed when session expires
+# message and cateogry that are flashed when session expires
 login_manager.login_message = "Please re-login to continue"
 login_manager.login_message_category = "info"
 
 
-#before each request is process, this function is called
-    #updates the session/cookie
+# before each request is process, this function is called
+    # updates the session/cookie
 @webapp.before_request
 def before_request():
     session.modified = True
@@ -104,7 +104,7 @@ def login():
         cursor.close()
 
         if result:
-            #added this as validation that user input matched query results
+            # validation that user input matched query results
             if username == result[0][1] and password == result[0][2]:
                 user = User(user_id=result[0][0], username=result[0][1], password=result[0][2], email=result[0][3])
                 login_user(user)
