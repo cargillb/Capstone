@@ -12,8 +12,8 @@ import sys  # to print to stderr
 
 webapp = Flask(__name__)
 webapp.secret_key = b'_5#y2L"F4Q8z\n\xec]/'
-# sets the session timeout to 5 minutes
-webapp.permanent_session_lifetime = timedelta(minutes=5)
+# sets the session timeout to 10 minutes
+webapp.permanent_session_lifetime = timedelta(minutes=10)
 
 # flask-login
 '''
@@ -40,6 +40,16 @@ login_manager.login_message_category = "info"
 @webapp.before_request
 def before_request():
     session.modified = True
+
+#TODO: be sure we remove this if we don't implement it
+#tested to see if this would work- might on heroku but not on venv
+#webapp.before_request
+#def enforce_https_in_heroku():
+#    if request.header.get('X-Forwarded-Proto')=='http':
+#        url = request.url.replace('http://', 'https://', 1)
+#        code = 301
+#        return redirect(url, code=code)
+
 
 @login_manager.user_loader
 def load_user(user_id):
