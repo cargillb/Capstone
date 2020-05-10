@@ -1,6 +1,7 @@
 #import mysql.connector
 #from mysql.connector import Error
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, session
+from datetime import timedelta
 from db_connector.db_connector import connect_to_database, execute_query
 from flask_login import LoginManager, login_user, login_required, current_user, logout_user, UserMixin
 
@@ -8,10 +9,11 @@ import sys  # to print to stderr
 
 
 #create the web application
-webapp = Flask(__name__)
-#webapp = Flask(__name__, static_url_path='/static')
-webapp.secret_key = b'_5#y2L"F4Q8z\n\xec]/'
 
+webapp = Flask(__name__)
+webapp.secret_key = b'_5#y2L"F4Q8z\n\xec]/'
+#TODO: reset to minutes--> sets the session timeout to 5 minutes
+webapp.permanent_session_lifetime = timedelta(minutes=5)
 
 # flask-login
 '''
@@ -28,14 +30,23 @@ webapp.secret_key = b'_5#y2L"F4Q8z\n\xec]/'
 login_manager = LoginManager()
 login_manager.init_app(webapp)
 login_manager.login_view = '/login'
+#message and cateogry that are flashed when session expires
+login_manager.login_message = "Please re-login to continue"
+login_manager.login_message_category = "info"
 
+
+#before each request is process, this function is called
+    #updates the session/cookie
+@webapp.before_request
+def before_request():
+    session.modified = True
 
 @login_manager.user_loader
 def load_user(user_id):
     db_connection = connect_to_database()  # connect to db
     query = "SELECT * FROM users WHERE `user_id` ='{}'".format(user_id)
     cursor = execute_query(db_connection, query)  # run query
-    result = cursor.fetchall()  
+    result = cursor.fetchall()
     cursor.close()
     id = result[0][0]
     username = result[0][1]
@@ -55,7 +66,6 @@ class User(UserMixin):
         self.list_id = None
         self.task_id = None
 
-
 #test if password meets complexity requirements
 def complex_password(password):
 
@@ -68,7 +78,6 @@ def complex_password(password):
         return True
     else:
         return False
-
 
 #-------------------------------- Login Routes --------------------------------
 @webapp.route('/')
@@ -99,6 +108,7 @@ def login():
             if username == result[0][1] and password == result[0][2]:
                 user = User(user_id=result[0][0], username=result[0][1], password=result[0][2], email=result[0][3])
                 login_user(user)
+                session.permanent = True
                 flash('You have been logged in!', 'success')
                 next_page = request.args.get('next')
                 db_connection.close() # close connection before returning
@@ -110,6 +120,7 @@ def login():
 
 
 @webapp.route('/logout')
+@login_required
 def logout():
     logout_user()
     flash('You have successfully logged out', 'info')
@@ -154,7 +165,7 @@ def register():
         # make sure email is unique
         query = 'SELECT `email` FROM users'
         cursor = execute_query(db_connection, query)
-        rtn = cursor.fetchall() 
+        rtn = cursor.fetchall()
         cursor.close()
         if (any(email in i for i in rtn)):
             flash('Email already registered, please try again', 'danger')
@@ -185,7 +196,7 @@ def home():
 
     query = "SELECT `username` FROM users WHERE `user_id` ='{}'".format(current_user.id)  # get username
     cursor = execute_query(db_connection, query)
-    rtn = cursor.fetchall() 
+    rtn = cursor.fetchall()
     cursor.close()
     context = {'user_name': rtn[0][0], 'user_id': current_user.id}
 
@@ -200,7 +211,7 @@ def home():
 
 
 @webapp.route('/add_list', methods=['POST'])
-# @login_required
+@login_required
 def add_list():
     """
     Route to execute query to add lists to db
@@ -222,9 +233,8 @@ def add_list():
     db_connection.close() # close connection before returning
     return redirect(url_for('home'))
 
-
 @webapp.route('/delete_list/<list_id>')
-# @login_required
+@login_required
 def delete_list(list_id):
     """
     Route to delete a list
@@ -239,6 +249,7 @@ def delete_list(list_id):
 
 
 @webapp.route('/update_list/<list_id>', methods=['POST', 'GET'])
+@login_required
 def update_list(list_id):
     """
     Display list update form and process any updates using the same function
@@ -249,7 +260,7 @@ def update_list(list_id):
     if request.method == 'GET':
         query = "SELECT * FROM `lists` WHERE `list_id` ='{}'".format(list_id)  # get info of list
         cursor = execute_query(db_connection, query)
-        rtn = cursor.fetchall()  
+        rtn = cursor.fetchall()
         cursor.close()
         context = {'list_id': rtn[0][0], 'list_name': rtn[0][2], 'list_desc': rtn[0][3]}
         db_connection.close() # close connection before returning
@@ -264,7 +275,9 @@ def update_list(list_id):
 
 
 #-------------------------------- Task Routes --------------------------------
+
 @webapp.route('/tasks/<list_id>')
+@login_required
 def tasks(list_id):
     """
     Route for the tasks page of a user's list where all of the tasks of a to do list are shown
@@ -297,24 +310,23 @@ def tasks(list_id):
 
     query = "SELECT * from dataTypes" # get list of all types of tasks
     cursor = execute_query(db_connection, query)
-    rtn = cursor.fetchall()  
+    rtn = cursor.fetchall()
     cursor.close()
     context['taskTypes'] = rtn
 
     db_connection.close() # close connection before returning
     return render_template('tasks.html', context=context)
 
-
 @webapp.route('/invalid_access')
-# @login_required
+@login_required
 def invalid_access():
     """
     Route if a user tries to access another users list of tasks
     """
     return render_template('invalid_access.html', context = None)
 
-
 @webapp.route('/add_task', methods=['POST'])
+@login_required
 def add_task():
     """
     Route to execute query to add task to db
@@ -333,8 +345,8 @@ def add_task():
     db_connection.close() # close connection before returning
     return redirect("/tasks/" + inputs['list_id'])
 
-
 @webapp.route('/delete_task/<list_id>/<task_id>')
+@login_required
 def delete_task(task_id, list_id):
     """
     Route to delete a task
@@ -349,6 +361,7 @@ def delete_task(task_id, list_id):
 
 
 @webapp.route('/update_task/<list_id>/<task_id>', methods=['POST', 'GET'])
+@login_required
 def update_task(list_id, task_id):
     """
     Display task update form and process any updates using the same function

@@ -18,12 +18,12 @@
 <header class="navbar bg-light">
 	<nav class="navbar navbar-light bg-light">
 		<a class="navbar-brand" href="{{ url_for('login') }}">
-			<img src="{{ url_for('.static', filename = 'WhiteHat.jpg') }}" width="60" height="30" class="d-inline-block align-top" alt="">
-			White Hat
+			<img src="{{ url_for('static', filename = 'img/WhiteHat.jpg') }}"  width="60" height="30" class="d-inline-block align-top" alt="">
+			Home
 		</a>
 	</nav>
 		<form class="form-inline">
-			
+
         <a class="btn btn-outline-danger" href="{{ url_for('logout') }}" role="button">Logout</a>
  </form>
 </header>
@@ -50,7 +50,6 @@
 <script crossorigin="anonymous"
         integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM"
         src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
-<!-- JavaScript for the webapp -->
-<script src="{{ url_for('.static', filename = 'pjt_scripts.js') }}" type="text/javascript"></script> <!-- Our sripts -->
+
 </body>
 </html>
