@@ -193,6 +193,42 @@ def register():
         db_connection.close() # close connection before returning
         return redirect(url_for('login'))
 
+#---------------------------- Password Recovery Routes ------------------------------
+
+@webapp.route("/recoverPassword", methods=['GET', 'POST'])
+def passwordRecovery():
+    if current_user.is_authenticated:
+        return redirect(url_for('home'))
+
+    if request.method == 'GET':
+        return render_template('passwordRecovery.html')
+
+    if request.method == 'POST':
+
+        email = request.form['email']
+
+        db_connection = connect_to_database()
+
+        # make sure email is unique
+        query = 'SELECT `email` FROM users'
+        cursor = execute_query(db_connection, query)
+        rtn = cursor.fetchall()
+        cursor.close()
+        if (not any(email in i for i in rtn)):
+            flash('Email not registered, please try again', 'danger')
+            db_connection.close() # close connection before returning
+            return render_template('passwordRecovery.html')
+
+        #query = ('UPDATE `users` '
+        #         'SET pword = %s WHERE email = %s;')
+        #data = (password, email)
+        #cursor = execute_query(db_connection, query, data)
+        #cursor.close()
+
+        #TODO: remove NOTSETUP below after it's setup
+        flash('NOT SETUP: Check your email to proceed with resetting the password', 'success')
+        db_connection.close() # close connection before returning
+        return redirect(url_for('login'))
 
 #-------------------------------- Home (List) Routes --------------------------------
 @webapp.route('/home')
