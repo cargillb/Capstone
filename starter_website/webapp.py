@@ -230,6 +230,41 @@ def passwordRecovery():
         db_connection.close() # close connection before returning
         return redirect(url_for('login'))
 
+@webapp.route("/resetPassword", methods=['GET', 'POST'])
+def passwordReset():
+    if current_user.is_authenticated:
+        return redirect(url_for('home'))
+
+    if request.method == 'GET':
+
+        return render_template('passwordReset.html')
+
+    if request.method == 'POST':
+
+        password = request.form['password']
+        confirm_password = request.form['confirm_password']
+
+        if not complex_password(password):
+            flash('Password requirements not met', 'danger')
+            return render_template('passwordReset.html')
+
+        if password != confirm_password:
+            flash('Password confirmation does not match password', 'danger')
+            return render_template('passwordReset.html')
+
+        db_connection = connect_to_database()
+
+        #query = ('UPDATE `users` '
+        #         'SET pword = %s WHERE email = %s;')
+        #data = (password, email)
+        #cursor = execute_query(db_connection, query, data)
+        #cursor.close()
+
+        #TODO: remove NOTSETUP below after it's setup
+        flash('Your password has been reset.', 'success')
+        db_connection.close() # close connection before returning
+        return redirect(url_for('login'))
+
 #-------------------------------- Home (List) Routes --------------------------------
 @webapp.route('/home')
 @login_required
