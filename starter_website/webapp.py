@@ -150,7 +150,6 @@ def login():
 
             # else failed login attempt
             else:
-                flash('Login Unsuccessful. Please check username and password', 'danger')
                 # add one to login_attempts
                 query = "UPDATE users SET login_attempts = '{}' WHERE user_id = '{}'".format(result[0][6] + 1, result[0][0])
                 cursor = execute_query(db_connection, query)  # run query
@@ -162,6 +161,7 @@ def login():
                 cursor = execute_query(db_connection, query)  # run query
                 cursor.close()
 
+                flash('Login Unsuccessful. Please check username and password', 'danger')
                 db_connection.close() # close connection before returning
                 return render_template('login.html')
 
@@ -219,11 +219,9 @@ def register():
             db_connection.close() # close connection before returning
             return render_template('accountCreation.html')
 
-        query = ('INSERT INTO `users` '
-                 '(`user_id`, `username`, `pword`, `email`) '
-                 'VALUES (NULL, %s, %s, %s);')
-        data = (username, password, email)
-        cursor = execute_query(db_connection, query, data)
+        cursor = db_connection.cursor()
+        cursor.callproc('addUser', [username, password, email, ])
+        db_connection.commit()
         cursor.close()
 
         flash('Your account has been created. You may now log in.', 'success')
