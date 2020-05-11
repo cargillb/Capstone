@@ -111,6 +111,7 @@ def login():
         result = cursor.fetchall()
         cursor.close()
 
+        # if the user provided a valid username
         if result:
             # get information about login attempts
             last_login_attempt = result[0][7]  # get last login attempt datetime
@@ -119,8 +120,8 @@ def login():
             seconds_in_day = 24 * 60 * 60
             difference = divmod(difference.days * seconds_in_day + difference.seconds, 60) # convert difference to a tuple of difference in minutes and seconds
 
-            # if they've failed more than 5 attempts in the last 5 minutes, don't allow login
-            if result[0][6] >= 5 and difference[0] < 5:  
+            # if they've failed more than 3 attempts in the last 5 minutes, don't allow login
+            if result[0][6] >= 3 and difference[0] < 5:  
                 flash('Too many failed login attempts. Try again later', 'danger')
                 db_connection.close() # close connection before returning
                 return render_template('login.html')
@@ -146,7 +147,7 @@ def login():
                 next_page = request.args.get('next')
                 db_connection.close() # close connection before returning
                 return redirect(url_for('home'))
-                
+
             # else failed login attempt
             else:
                 flash('Login Unsuccessful. Please check username and password', 'danger')
