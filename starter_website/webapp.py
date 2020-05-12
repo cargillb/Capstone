@@ -43,12 +43,12 @@ def before_request():
 
 #TODO: be sure we remove this if we don't implement it
 #tested to see if this would work- might on heroku but not on venv
-#webapp.before_request
-#def enforce_https_in_heroku():
-#    if request.header.get('X-Forwarded-Proto')=='http':
-#        url = request.url.replace('http://', 'https://', 1)
-#        code = 301
-#        return redirect(url, code=code)
+webapp.before_request
+def enforce_https_in_heroku():
+    if request.header.get('X-Forwarded-Proto')=='http':
+        url = request.url.replace('http://', 'https://', 1)
+        code = 301
+        return redirect(url, code=code)
 
 
 @login_manager.user_loader
