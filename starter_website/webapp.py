@@ -4,6 +4,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 from datetime import datetime, timedelta
 from db_connector.db_connector import connect_to_database, execute_query
 from flask_login import LoginManager, login_user, login_required, current_user, logout_user, UserMixin
+from werkzeug.security import generate_password_hash, check_password_hash
 
 import sys  # to print to stderr
 
@@ -116,6 +117,8 @@ def login():
             # get information about login attempts
             last_login_attempt = result[0][7]  # get last login attempt datetime
             current_time = datetime.now()  # get current datetime
+            if last_login_attempt is None:  # check if it's users first login
+                last_login_attempt = datetime.min  # set first login time to min
             difference = current_time - last_login_attempt  # calculate the difference
             seconds_in_day = 24 * 60 * 60
             difference = divmod(difference.days * seconds_in_day + difference.seconds, 60) # convert difference to a tuple of difference in minutes and seconds
@@ -127,7 +130,7 @@ def login():
                 return render_template('login.html')
 
             # else check validation that user input matched query results - successful login
-            elif username == result[0][1] and password == result[0][2]:
+            elif username == result[0][1] and check_password_hash(result[0][2], password):  # check password against stored hash and salt
                 # reset login_attempts to 0
                 query = "UPDATE users SET login_attempts = 0 WHERE user_id = '{}'".format(result[0][0])
                 cursor = execute_query(db_connection, query)  # run query
@@ -219,8 +222,12 @@ def register():
             db_connection.close() # close connection before returning
             return render_template('accountCreation.html')
 
+        # hash password with random 8 char salt - hash and salt are stored in hashed_password
+        # in the same string
+        hashed_password = generate_password_hash(password, salt_length=8)
+
         cursor = db_connection.cursor()
-        cursor.callproc('addUser', [username, password, email, ])
+        cursor.callproc('addUser', [username, hashed_password, email, ])
         db_connection.commit()
         cursor.close()
 
@@ -288,9 +295,11 @@ def passwordReset():
 
         db_connection = connect_to_database()
 
+        hashed_password = generate_password_hash(password, salt_length=8) # salt and hash password
+
         #query = ('UPDATE `users` '
         #         'SET pword = %s WHERE email = %s;')
-        #data = (password, email)
+        #data = (hashed_password, email)
         #cursor = execute_query(db_connection, query, data)
         #cursor.close()
 
