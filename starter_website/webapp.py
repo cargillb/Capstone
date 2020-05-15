@@ -1,7 +1,7 @@
 #import mysql.connector
 #from mysql.connector import Error
 from flask import Flask, render_template, request, redirect, url_for, flash, session
-from datetime import timedelta
+from datetime import datetime, timedelta
 from db_connector.db_connector import connect_to_database, execute_query
 from flask_login import LoginManager, login_user, login_required, current_user, logout_user, UserMixin
 
@@ -43,13 +43,12 @@ def before_request():
 
 #TODO: be sure we remove this if we don't implement it
 #tested to see if this would work- might on heroku but not on venv
-#source: https://dev.to/brunooliveira/flask-series-part-10-allowing-users-to-register-and-login-1enb
-#webapp.before_request
-#def enforce_https_in_heroku():
-#    if request.header.get('X-Forwarded-Proto')=='http':
-#        url = request.url.replace('http://', 'https://', 1)
-#        code = 301
-#        return redirect(url, code=code)
+webapp.before_request
+def enforce_https_in_heroku():
+    if request.header.get('X-Forwarded-Proto')=='http':
+        url = request.url.replace('http://', 'https://', 1)
+        code = 301
+        return redirect(url, code=code)
 
 
 @login_manager.user_loader
@@ -106,17 +105,41 @@ def login():
 
         db_connection = connect_to_database()  # connect to db
 
-        #Old query
-        #query = "SELECT * FROM users WHERE `username`='{}' AND pword='{}'".format(username, password)
-        #source: https://pynative.com/python-mysql-execute-stored-procedure/ AND https://www.python.org/dev/peps/pep-0249/#cursor-methods
+        # get info for specified username
         cursor = db_connection.cursor()
         cursor.callproc('returnUserInfo', [username, ])
         result = cursor.fetchall()
         cursor.close()
 
+        # if the user provided a valid username
         if result:
-            # validation that user input matched query results
-            if username == result[0][1] and password == result[0][2]:
+            # get information about login attempts
+            last_login_attempt = result[0][7]  # get last login attempt datetime
+            current_time = datetime.now()  # get current datetime
+            difference = current_time - last_login_attempt  # calculate the difference
+            seconds_in_day = 24 * 60 * 60
+            difference = divmod(difference.days * seconds_in_day + difference.seconds, 60) # convert difference to a tuple of difference in minutes and seconds
+
+            # if they've failed more than 3 attempts in the last 5 minutes, don't allow login
+            if result[0][6] >= 3 and difference[0] < 5:  
+                flash('Too many failed login attempts. Try again later', 'danger')
+                db_connection.close() # close connection before returning
+                return render_template('login.html')
+
+            # else check validation that user input matched query results - successful login
+            elif username == result[0][1] and password == result[0][2]:
+                # reset login_attempts to 0
+                query = "UPDATE users SET login_attempts = 0 WHERE user_id = '{}'".format(result[0][0])
+                cursor = execute_query(db_connection, query)  # run query
+                cursor.close()
+                
+                # update last_login_attempt
+                formatted_date = current_time.strftime('%Y-%m-%d %H:%M:%S')
+                query = "UPDATE users SET last_login_attempt = '{}' WHERE user_id = '{}'".format(formatted_date, result[0][0])
+                cursor = execute_query(db_connection, query)  # run query
+                cursor.close()
+
+                #log user in
                 user = User(user_id=result[0][0], username=result[0][1], password=result[0][2], email=result[0][3])
                 login_user(user)
                 session.permanent = True
@@ -125,9 +148,22 @@ def login():
                 db_connection.close() # close connection before returning
                 return redirect(url_for('home'))
 
-        flash('Login Unsuccessful. Please check username and password', 'danger')
-        db_connection.close() # close connection before returning
-        return render_template('login.html')
+            # else failed login attempt
+            else:
+                # add one to login_attempts
+                query = "UPDATE users SET login_attempts = '{}' WHERE user_id = '{}'".format(result[0][6] + 1, result[0][0])
+                cursor = execute_query(db_connection, query)  # run query
+                cursor.close()
+                
+                # update last_login_attempt
+                formatted_date = current_time.strftime('%Y-%m-%d %H:%M:%S')
+                query = "UPDATE users SET last_login_attempt = '{}' WHERE user_id = '{}'".format(formatted_date, result[0][0])
+                cursor = execute_query(db_connection, query)  # run query
+                cursor.close()
+
+                flash('Login Unsuccessful. Please check username and password', 'danger')
+                db_connection.close() # close connection before returning
+                return render_template('login.html')
 
 
 @webapp.route('/logout')
@@ -183,11 +219,9 @@ def register():
             db_connection.close() # close connection before returning
             return render_template('accountCreation.html')
 
-        query = ('INSERT INTO `users` '
-                 '(`user_id`, `username`, `pword`, `email`) '
-                 'VALUES (NULL, %s, %s, %s);')
-        data = (username, password, email)
-        cursor = execute_query(db_connection, query, data)
+        cursor = db_connection.cursor()
+        cursor.callproc('addUser', [username, password, email, ])
+        db_connection.commit()
         cursor.close()
 
         flash('Your account has been created. You may now log in.', 'success')
