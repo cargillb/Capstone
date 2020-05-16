@@ -48,8 +48,8 @@ login_manager.login_message_category = "info"
 def before_request():
     session.modified = True
 
-#TODO: be sure we remove this if we don't implement it
-#tested to see if this would work- might on heroku but not on venv
+#TODO: Double check this works when logged into secure send_confirmation_email
+#be sure we remove this if we don't implement it
 webapp.before_request
 def enforce_https_in_heroku():
     if request.header.get('X-Forwarded-Proto')=='http':
@@ -127,6 +127,7 @@ def generate_confirmation_token(user_email):
     serializer = URLSafeTimedSerializer(webapp.config['SECRET_KEY'])
     return serializer.dumps(user_email, salt=webapp.config['SECURITY_PASSWORD_SALT'])
 
+#TODO: play with expiration (shorter) to make sure it's working as intended
 def confirm_token(token, expiration=3600):
     serializer=URLSafeTimedSerializer(webapp.config['SECRET_KEY'])
     try:
@@ -149,12 +150,14 @@ def confirm_email(token):
     query = "SELECT emailConfirmed FROM users WHERE email='{}'".format(email)
     cursor = execute_query(db_connection, query)
     rtn = cursor.fetchall()
-    print(rtn[0])
-    if rtn[0]==1:
+    #if email confirmed already
+    print(rtn)
+    if rtn[0][0]==1:
         flash('Account already confirmed. Please login', 'success')
     else:
-        #TODO: make the call to db here to update user
-        query = "UPDATE users SET emailConfirmed='{}' WHERE email='{}'".format(1,email)
+        # update emailConfirmed in DB
+        current_time = datetime.now()
+        query = "UPDATE users SET emailConfirmed='{}',confirmedOn='{}' WHERE email='{}'".format(1, current_time ,email)
         cursor = execute_query(db_connection, query)
         cursor.close()
         db_connection.close()
@@ -185,11 +188,7 @@ def login():
 
         # if the user provided a valid username
         if result:
-            #ensure they have confirmed their email
-            if result[0][4]==0:
-                flash('Please confirm your email to log in', 'warning')
-                db_connection.close()
-                return render_template('login.html')
+
             # get information about login attempts
             last_login_attempt = result[0][7]  # get last login attempt datetime
             current_time = datetime.now()  # get current datetime
@@ -198,7 +197,11 @@ def login():
             difference = current_time - last_login_attempt  # calculate the difference
             seconds_in_day = 24 * 60 * 60
             difference = divmod(difference.days * seconds_in_day + difference.seconds, 60) # convert difference to a tuple of difference in minutes and seconds
-
+            #ensure they have confirmed their email
+            if result[0][4]==0:
+                flash('Please confirm your email to log in', 'warning')
+                db_connection.close()
+                return render_template('login.html')
             # if they've failed more than 3 attempts in the last 5 minutes, don't allow login
             elif result[0][6] >= 3 and difference[0] < 5:
                 flash('Too many failed login attempts. Try again later', 'danger')
@@ -306,13 +309,10 @@ def register():
         cursor.callproc('addUser', [username, hashed_password, email, ])
         db_connection.commit()
         cursor.close()
+        db_connection.close() # close connection before returning
 
         send_confirmation_email(email)
-        #send_email('Secure Capstone Registration', [email], 'Thanks for registering with Secure Capstone',
-        #'<h3> Thanks for registering with us!</h3><p> Please click this link to confirm your <a>email</a></p>')
-#TODO: change message flash to confirm your email
         flash('Thanks for registering. Please check your email to confirm your email address.', 'success')
-        db_connection.close() # close connection before returning
         return redirect(url_for('login'))
 
 #---------------------------- Password Recovery Routes ------------------------------
