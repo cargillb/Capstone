@@ -185,6 +185,11 @@ def login():
 
         # if the user provided a valid username
         if result:
+            #ensure they have confirmed their email
+            if result[0][4]==0:
+                flash('Please confirm your email to log in', 'warning')
+                db_connection.close()
+                return render_template('login.html')
             # get information about login attempts
             last_login_attempt = result[0][7]  # get last login attempt datetime
             current_time = datetime.now()  # get current datetime
@@ -195,7 +200,7 @@ def login():
             difference = divmod(difference.days * seconds_in_day + difference.seconds, 60) # convert difference to a tuple of difference in minutes and seconds
 
             # if they've failed more than 3 attempts in the last 5 minutes, don't allow login
-            if result[0][6] >= 3 and difference[0] < 5:
+            elif result[0][6] >= 3 and difference[0] < 5:
                 flash('Too many failed login attempts. Try again later', 'danger')
                 db_connection.close() # close connection before returning
                 return render_template('login.html')
