@@ -7,15 +7,19 @@ from flask_login import LoginManager, login_user, login_required, current_user, 
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_mail import Mail, Message
 from threading import Thread
+from itsdangerous import URLSafeTimedSerializer
+import jwt
 import sys  # to print to stderr
 
 
 #create the web application
 
 webapp = Flask(__name__)
+#load configuration from flask.cfg
 webapp.config.from_pyfile('flask.cfg')
 
-webapp.secret_key = b'_5#y2L"F4Q8z\n\xec]/'
+#webapp.secret_key = b'_5#y2L"F4Q8z\n\xec]/'
+
 # sets the session timeout to 10 minutes
 webapp.permanent_session_lifetime = timedelta(minutes=10)
 
@@ -100,13 +104,62 @@ def send_async_email(msg):
     with webapp.app_context():
         mail.send(msg)
 
-def send_email(subject, recipients, text_body, html_body):
+def send_email(subject, recipients, html_body):
     msg = Message(subject, recipients =recipients)
-    msg.body = text_body
     msg.html = html_body
     thr = Thread(target=send_async_email, args=[msg])
     thr.start()
     #mail.send(msg)
+
+def send_confirmation_email(user_email):
+    confirm_serializer = URLSafeTimedSerializer(webapp.config['SECRET_KEY'])
+    token = generate_confirmation_token(user_email)
+    # _external=True allows it to use the url it is on to generate the url to send
+    confirm_url = url_for('confirm_email', token=token, _external=True)
+    print(confirm_url)
+    html = render_template(
+        'email_confirmation.html',
+        confirm_url=confirm_url)
+    send_email('Confirm Your Email Address', [user_email], html)
+
+#https://realpython.com/handling-email-confirmation-in-flask/
+def generate_confirmation_token(user_email):
+    serializer = URLSafeTimedSerializer(webapp.config['SECRET_KEY'])
+    return serializer.dumps(user_email, salt=webapp.config['SECURITY_PASSWORD_SALT'])
+
+def confirm_token(token, expiration=3600):
+    serializer=URLSafeTimedSerializer(webapp.config['SECRET_KEY'])
+    try:
+        email=serializer.loads(
+        token, salt=webapp.config['SECURITY_PASSWORD_SALT'],
+        max_age=expiration
+        )
+    except:
+        return False
+    return email
+
+@webapp.route('/confirm/<token>')
+def confirm_email(token):
+    try:
+        email = confirm_token(token)
+    except:
+        flash('The confirmation link is invalid or has expired.', 'danger')
+
+    db_connection = connect_to_database()
+    query = "SELECT emailConfirmed FROM users WHERE email='{}'".format(email)
+    cursor = execute_query(db_connection, query)
+    rtn = cursor.fetchall()
+    print(rtn[0])
+    if rtn[0]==1:
+        flash('Account already confirmed. Please login', 'success')
+    else:
+        #TODO: make the call to db here to update user
+        query = "UPDATE users SET emailConfirmed='{}' WHERE email='{}'".format(1,email)
+        cursor = execute_query(db_connection, query)
+        cursor.close()
+        db_connection.close()
+        flash('Thank you for confirming your account!', 'success')
+    return redirect(url_for('login'))
 
 #-------------------------------- Login Routes --------------------------------
 @webapp.route('/')
@@ -248,10 +301,12 @@ def register():
         cursor.callproc('addUser', [username, hashed_password, email, ])
         db_connection.commit()
         cursor.close()
-        send_email('Secure Capstone Registration', [email], 'Thanks for registering with Secure Capstone',
-        '<h3> Thanks for registering with us!</h3><p> Please click this link to confirm your <a>email</a></p>')
+
+        send_confirmation_email(email)
+        #send_email('Secure Capstone Registration', [email], 'Thanks for registering with Secure Capstone',
+        #'<h3> Thanks for registering with us!</h3><p> Please click this link to confirm your <a>email</a></p>')
 #TODO: change message flash to confirm your email
-        flash('Your account has been created. You may now log in.', 'success')
+        flash('Thanks for registering. Please check your email to confirm your email address.', 'success')
         db_connection.close() # close connection before returning
         return redirect(url_for('login'))
 
