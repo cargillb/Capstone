@@ -8,17 +8,13 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_mail import Mail, Message
 from threading import Thread
 from itsdangerous import URLSafeTimedSerializer
-import jwt
 import sys  # to print to stderr
 
 
 #create the web application
-
 webapp = Flask(__name__)
 #load configuration from flask.cfg
 webapp.config.from_pyfile('../flask.cfg')
-
-#webapp.secret_key = b'_5#y2L"F4Q8z\n\xec]/'
 
 # sets the session timeout to 10 minutes
 webapp.permanent_session_lifetime = timedelta(minutes=10)
