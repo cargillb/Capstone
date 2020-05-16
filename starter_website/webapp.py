@@ -5,13 +5,16 @@ from datetime import datetime, timedelta
 from db_connector.db_connector import connect_to_database, execute_query
 from flask_login import LoginManager, login_user, login_required, current_user, logout_user, UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
-
+from flask_mail import Mail, Message
+from threading import Thread
 import sys  # to print to stderr
 
 
 #create the web application
 
 webapp = Flask(__name__)
+webapp.config.from_pyfile('flask.cfg')
+
 webapp.secret_key = b'_5#y2L"F4Q8z\n\xec]/'
 # sets the session timeout to 10 minutes
 webapp.permanent_session_lifetime = timedelta(minutes=10)
@@ -34,7 +37,6 @@ login_manager.login_view = '/login'
 # message and cateogry that are flashed when session expires
 login_manager.login_message = "Please re-login to continue"
 login_manager.login_message_category = "info"
-
 
 # before each request is process, this function is called
     # updates the session/cookie
@@ -90,6 +92,22 @@ def complex_password(password):
     else:
         return False
 
+#------------- Mail function/views --------------------------------------------
+
+mail = Mail(webapp)
+
+def send_async_email(msg):
+    with webapp.app_context():
+        mail.send(msg)
+
+def send_email(subject, recipients, text_body, html_body):
+    msg = Message(subject, recipients =recipients)
+    msg.body = text_body
+    msg.html = html_body
+    thr = Thread(target=send_async_email, args=[msg])
+    thr.start()
+    #mail.send(msg)
+
 #-------------------------------- Login Routes --------------------------------
 @webapp.route('/')
 @webapp.route('/login', methods=['GET', 'POST'])
@@ -124,7 +142,7 @@ def login():
             difference = divmod(difference.days * seconds_in_day + difference.seconds, 60) # convert difference to a tuple of difference in minutes and seconds
 
             # if they've failed more than 3 attempts in the last 5 minutes, don't allow login
-            if result[0][6] >= 3 and difference[0] < 5:  
+            if result[0][6] >= 3 and difference[0] < 5:
                 flash('Too many failed login attempts. Try again later', 'danger')
                 db_connection.close() # close connection before returning
                 return render_template('login.html')
@@ -135,7 +153,7 @@ def login():
                 query = "UPDATE users SET login_attempts = 0 WHERE user_id = '{}'".format(result[0][0])
                 cursor = execute_query(db_connection, query)  # run query
                 cursor.close()
-                
+
                 # update last_login_attempt
                 formatted_date = current_time.strftime('%Y-%m-%d %H:%M:%S')
                 query = "UPDATE users SET last_login_attempt = '{}' WHERE user_id = '{}'".format(formatted_date, result[0][0])
@@ -157,7 +175,7 @@ def login():
                 query = "UPDATE users SET login_attempts = '{}' WHERE user_id = '{}'".format(result[0][6] + 1, result[0][0])
                 cursor = execute_query(db_connection, query)  # run query
                 cursor.close()
-                
+
                 # update last_login_attempt
                 formatted_date = current_time.strftime('%Y-%m-%d %H:%M:%S')
                 query = "UPDATE users SET last_login_attempt = '{}' WHERE user_id = '{}'".format(formatted_date, result[0][0])
@@ -230,7 +248,9 @@ def register():
         cursor.callproc('addUser', [username, hashed_password, email, ])
         db_connection.commit()
         cursor.close()
-
+        send_email('Secure Capstone Registration', [email], 'Thanks for registering with Secure Capstone',
+        '<h3> Thanks for registering with us!</h3><p> Please click this link to confirm your <a>email</a></p>')
+#TODO: change message flash to confirm your email
         flash('Your account has been created. You may now log in.', 'success')
         db_connection.close() # close connection before returning
         return redirect(url_for('login'))
