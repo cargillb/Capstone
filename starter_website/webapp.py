@@ -16,7 +16,7 @@ import sys  # to print to stderr
 
 webapp = Flask(__name__)
 #load configuration from flask.cfg
-webapp.config.from_pyfile('flask.cfg')
+webapp.config.from_pyfile('../flask.cfg')
 
 #webapp.secret_key = b'_5#y2L"F4Q8z\n\xec]/'
 
