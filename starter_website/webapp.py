@@ -283,7 +283,7 @@ def generate_confirmation_token(user_email, securityCheck):
     serializer = URLSafeTimedSerializer(webapp.config['SECRET_KEY'])
     return serializer.dumps(user_email, salt=securityCheck)
 
-#TODO: Fred - play with expiration (shorter) to make sure it's working as intended
+#TODO: play with expiration (shorter) to make sure it's working as intended
 def confirm_token(token, securityCheck, expiration=3600, ):
     serializer=URLSafeTimedSerializer(webapp.config['SECRET_KEY'])
     try:
