@@ -126,6 +126,7 @@ def login():
             seconds_in_day = 24 * 60 * 60
             difference = divmod(difference.days * seconds_in_day + difference.seconds, 60) # convert difference to a tuple of difference in minutes and seconds
             #ensure they have confirmed their email
+
             if result[0][4]==0:
                 flash('Please confirm your email to log in', 'warning')
                 db_connection.close()
@@ -256,10 +257,8 @@ def send_email(subject, recipients, html_body):
     msg.html = html_body
     thr = Thread(target=send_async_email, args=[msg])
     thr.start()
-    #mail.send(msg)
 
 def send_confirmation_email(user_email):
-    confirm_serializer = URLSafeTimedSerializer(webapp.config['SECRET_KEY'])
     token = generate_confirmation_token(user_email, webapp.config['SECURITY_PASSWORD_SALT'])
     # _external=True allows it to use the url it is on to generate the url to send
     confirm_url = url_for('confirm_email', token=token, _external=True)
@@ -284,7 +283,7 @@ def generate_confirmation_token(user_email, securityCheck):
     return serializer.dumps(user_email, salt=securityCheck)
 
 #TODO: play with expiration (shorter) to make sure it's working as intended
-def confirm_token(token, securityCheck, expiration=3600, ):
+def confirm_token(token, securityCheck, expiration=3600):
     serializer=URLSafeTimedSerializer(webapp.config['SECRET_KEY'])
     try:
         email=serializer.loads(
