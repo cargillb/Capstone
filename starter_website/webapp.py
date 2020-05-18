@@ -5,14 +5,17 @@ from datetime import datetime, timedelta
 from db_connector.db_connector import connect_to_database, execute_query
 from flask_login import LoginManager, login_user, login_required, current_user, logout_user, UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
-
+from flask_mail import Mail, Message
+from threading import Thread
+from itsdangerous import URLSafeTimedSerializer
 import sys  # to print to stderr
 
 
 #create the web application
-
 webapp = Flask(__name__)
-webapp.secret_key = b'_5#y2L"F4Q8z\n\xec]/'
+#load configuration from flask.cfg
+webapp.config.from_pyfile('../flask.cfg')
+
 # sets the session timeout to 10 minutes
 webapp.permanent_session_lifetime = timedelta(minutes=10)
 
@@ -35,15 +38,14 @@ login_manager.login_view = '/login'
 login_manager.login_message = "Please re-login to continue"
 login_manager.login_message_category = "info"
 
-
 # before each request is process, this function is called
     # updates the session/cookie
 @webapp.before_request
 def before_request():
     session.modified = True
 
-#TODO: be sure we remove this if we don't implement it
-#tested to see if this would work- might on heroku but not on venv
+#TODO: Double check this works when logged into secure send_confirmation_email
+#be sure we remove this if we don't implement it
 webapp.before_request
 def enforce_https_in_heroku():
     if request.header.get('X-Forwarded-Proto')=='http':
@@ -114,6 +116,7 @@ def login():
 
         # if the user provided a valid username
         if result:
+
             # get information about login attempts
             last_login_attempt = result[0][7]  # get last login attempt datetime
             current_time = datetime.now()  # get current datetime
@@ -122,9 +125,14 @@ def login():
             difference = current_time - last_login_attempt  # calculate the difference
             seconds_in_day = 24 * 60 * 60
             difference = divmod(difference.days * seconds_in_day + difference.seconds, 60) # convert difference to a tuple of difference in minutes and seconds
+            #ensure they have confirmed their email
 
+            if result[0][4]==0:
+                flash('Please confirm your email to log in', 'warning')
+                db_connection.close()
+                return render_template('login.html')
             # if they've failed more than 3 attempts in the last 5 minutes, don't allow login
-            if result[0][6] >= 3 and difference[0] < 5:  
+            elif result[0][6] >= 3 and difference[0] < 5:
                 flash('Too many failed login attempts. Try again later', 'danger')
                 db_connection.close() # close connection before returning
                 return render_template('login.html')
@@ -135,7 +143,7 @@ def login():
                 query = "UPDATE users SET login_attempts = 0 WHERE user_id = '{}'".format(result[0][0])
                 cursor = execute_query(db_connection, query)  # run query
                 cursor.close()
-                
+
                 # update last_login_attempt
                 formatted_date = current_time.strftime('%Y-%m-%d %H:%M:%S')
                 query = "UPDATE users SET last_login_attempt = '{}' WHERE user_id = '{}'".format(formatted_date, result[0][0])
@@ -157,7 +165,7 @@ def login():
                 query = "UPDATE users SET login_attempts = '{}' WHERE user_id = '{}'".format(result[0][6] + 1, result[0][0])
                 cursor = execute_query(db_connection, query)  # run query
                 cursor.close()
-                
+
                 # update last_login_attempt
                 formatted_date = current_time.strftime('%Y-%m-%d %H:%M:%S')
                 query = "UPDATE users SET last_login_attempt = '{}' WHERE user_id = '{}'".format(formatted_date, result[0][0])
@@ -230,10 +238,96 @@ def register():
         cursor.callproc('addUser', [username, hashed_password, email, ])
         db_connection.commit()
         cursor.close()
-
-        flash('Your account has been created. You may now log in.', 'success')
         db_connection.close() # close connection before returning
+
+        send_confirmation_email(email)
+        flash('Thanks for registering. Please check your email to confirm your email address.', 'success')
         return redirect(url_for('login'))
+
+#------------- Mail function/views --------------------------------------------
+
+mail = Mail(webapp)
+
+def send_async_email(msg):
+    with webapp.app_context():
+        mail.send(msg)
+
+def send_email(subject, recipients, html_body):
+    msg = Message(subject, recipients =recipients)
+    msg.html = html_body
+    thr = Thread(target=send_async_email, args=[msg])
+    thr.start()
+
+def send_confirmation_email(user_email):
+    token = generate_confirmation_token(user_email, webapp.config['SECURITY_PASSWORD_SALT'])
+    # _external=True allows it to use the url it is on to generate the url to send
+    confirm_url = url_for('confirm_email', token=token, _external=True)
+    html = render_template(
+        'email_confirmation.html',
+        confirm_url=confirm_url)
+    send_email('Confirm Your Email Address', [user_email], html)
+
+def send_password_reset_email(user_email):
+    password_reset_serializer = URLSafeTimedSerializer(webapp.config['SECRET_KEY'])
+    token = generate_confirmation_token(user_email, webapp.config['RESET_PASSWORD_SALT'])
+    # _external=True allows it to use the url it is on to generate the url to send
+    password_reset_url = url_for('passwordReset', token=token, _external=True)
+    html = render_template(
+        'email_passwordReset.html',
+        password_reset_url=password_reset_url)
+    send_email('Password Reset', [user_email], html)
+
+#https://realpython.com/handling-email-confirmation-in-flask/
+def generate_confirmation_token(user_email, securityCheck):
+    serializer = URLSafeTimedSerializer(webapp.config['SECRET_KEY'])
+    return serializer.dumps(user_email, salt=securityCheck)
+
+#TODO: play with expiration (shorter) to make sure it's working as intended
+def confirm_token(token, securityCheck, expiration=3600):
+    serializer=URLSafeTimedSerializer(webapp.config['SECRET_KEY'])
+    try:
+        email=serializer.loads(
+        token, salt=securityCheck,
+        max_age=expiration
+        )
+    except:
+        return False
+    return email
+
+@webapp.route('/confirm/<token>')
+def confirm_email(token):
+    try:
+        email = confirm_token(token, webapp.config['SECURITY_PASSWORD_SALT'])
+    except:
+        flash('The confirmation link is invalid or has expired.', 'danger')
+
+    db_connection = connect_to_database()
+    query = "SELECT emailConfirmed FROM users WHERE email='{}'".format(email)
+    cursor = execute_query(db_connection, query)
+    rtn = cursor.fetchall()
+    #if email confirmed already
+    print(rtn)
+    if rtn[0][0]==1:
+        flash('Account already confirmed. Please login', 'success')
+    else:
+        # update emailConfirmed in DB
+        current_time = datetime.now()
+        query = "UPDATE users SET emailConfirmed='{}',confirmedOn='{}' WHERE email='{}'".format(1, current_time ,email)
+        cursor = execute_query(db_connection, query)
+        cursor.close()
+        db_connection.close()
+        flash('Thank you for confirming your account!', 'success')
+    return redirect(url_for('login'))
+
+# @webapp.route("/reset_Password/<token>", methods=['GET', 'POST'])
+# def password_Reset(token):
+#     try:
+#         email = confirm_token(token)
+#     except:
+#         flash('The password reset link is invalid or has expired.', 'danger')
+#         return redirect(url_for('login'))
+#     else:
+#         return redirect(url_for('resetPassword'))
 
 #---------------------------- Password Recovery Routes ------------------------------
 
@@ -248,7 +342,6 @@ def passwordRecovery():
     if request.method == 'POST':
 
         email = request.form['email']
-
         db_connection = connect_to_database()
 
         # make sure email is unique
@@ -261,49 +354,53 @@ def passwordRecovery():
             db_connection.close() # close connection before returning
             return render_template('passwordRecovery.html')
 
-        #query = ('UPDATE `users` '
-        #         'SET pword = %s WHERE email = %s;')
-        #data = (password, email)
-        #cursor = execute_query(db_connection, query, data)
-        #cursor.close()
+        #email matches but not confirmed
+        else:
+            query = "SELECT emailConfirmed FROM users WHERE email = '{}'".format(email)
+            cursor = execute_query(db_connection, query)
+            rtn = cursor.fetchall()
+            cursor.close()
+            if rtn[0][0] == 0:
+                flash('Email must be confirmed before attempting a password reset.','warning')
+                return render_template('login')
+        #email matches
+            send_password_reset_email(email)
+            db_connection.close()
+            flash('Please check your email to reset your password', 'success')
+            return redirect(url_for('login'))
 
-        #TODO: remove NOTSETUP below after it's setup
-        flash('NOT SETUP: Check your email to proceed with resetting the password', 'success')
-        db_connection.close() # close connection before returning
+@webapp.route("/resetPassword/<token>", methods=['GET','POST'])
+def passwordReset(token):
+    try:
+        email = confirm_token(token, webapp.config['RESET_PASSWORD_SALT'])
+    except:
+        flash('The password reset link is invalid or has expired.', 'danger')
         return redirect(url_for('login'))
-
-@webapp.route("/resetPassword", methods=['GET', 'POST'])
-def passwordReset():
-    if current_user.is_authenticated:
-        return redirect(url_for('home'))
+    #user has passed tests, allow resetting of password
 
     if request.method == 'GET':
-        return render_template('passwordReset.html')
+        return render_template('passwordReset.html', token=token)
 
-    if request.method == 'POST':
-
+    if request.method =='POST':
         password = request.form['password']
         confirm_password = request.form['confirm_password']
 
         if not complex_password(password):
             flash('Password requirements not met', 'danger')
-            return render_template('passwordReset.html')
+            return render_template('passwordReset.html', token=token)
 
         if password != confirm_password:
             flash('Password confirmation does not match password', 'danger')
-            return render_template('passwordReset.html')
+            return render_template('passwordReset.html', token=token)
 
         db_connection = connect_to_database()
-
         hashed_password = generate_password_hash(password, salt_length=8) # salt and hash password
+        print(email)
+        query = ('UPDATE `users` SET pword = %s WHERE email = %s;')
+        data = (hashed_password, email)
+        cursor = execute_query(db_connection, query, data)
+        cursor.close()
 
-        #query = ('UPDATE `users` '
-        #         'SET pword = %s WHERE email = %s;')
-        #data = (hashed_password, email)
-        #cursor = execute_query(db_connection, query, data)
-        #cursor.close()
-
-        #TODO: remove NOTSETUP below after it's setup
         flash('Your password has been reset.', 'success')
         db_connection.close() # close connection before returning
         return redirect(url_for('login'))
