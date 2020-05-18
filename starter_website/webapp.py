@@ -366,7 +366,7 @@ def passwordRecovery():
         #email matches
             send_password_reset_email(email)
             db_connection.close()
-            flash('Please Check your email to reset your password', 'success')
+            flash('Please check your email to reset your password', 'success')
             return redirect(url_for('login'))
 
 @webapp.route("/resetPassword/<token>", methods=['GET','POST'])
