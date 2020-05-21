@@ -55,7 +55,7 @@ def before_request():
 #         return redirect(url, code=code)
 
 #TODO: Uncomment below to enforce HTTPS in production
-# Talisman(webapp)
+Talisman(webapp)
 
 
 @login_manager.user_loader
