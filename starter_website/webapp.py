@@ -263,7 +263,6 @@ def send_confirmation_email(user_email):
     send_email('Confirm Your Email Address', [user_email], html)
 
 def send_password_reset_email(user_email):
-    password_reset_serializer = URLSafeTimedSerializer(webapp.config['SECRET_KEY'])
     token = generate_confirmation_token(user_email, webapp.config['RESET_PASSWORD_SALT'])
     # _external=True allows it to use the url it is on to generate the url to send
     password_reset_url = url_for('passwordReset', token=token, _external=True)
