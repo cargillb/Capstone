@@ -45,15 +45,6 @@ login_manager.login_message_category = "info"
 def before_request():
     session.modified = True
 
-#TODO: Double check this works when logged into secure send_confirmation_email
-#be sure we remove this if we don't implement it
-# webapp.before_request
-# def enforce_https_in_heroku():
-#     if request.header.get('X-Forwarded-Proto')=='http':
-#         url = request.url.replace('http://', 'https://', 1)
-#         code = 301
-#         return redirect(url, code=code)
-
 #TODO: Uncomment below to enforce HTTPS in production
 # Talisman(webapp)
 
