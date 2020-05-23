@@ -1,5 +1,3 @@
-#import mysql.connector
-#from mysql.connector import Error
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from datetime import datetime, timedelta
 from db_connector.db_connector import connect_to_database, execute_query
@@ -10,12 +8,21 @@ from threading import Thread
 from itsdangerous import URLSafeTimedSerializer
 from flask_talisman import Talisman
 import sys  # to print to stderr
-
+import logging
+import os
 
 #create the web application
 webapp = Flask(__name__)
 #load configuration from flask.cfg
 webapp.config.from_pyfile('../flask.cfg')
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s %(threadName)s : %(message)s’')
+# logging when on heroku
+if os.environ.get('HEROKU') is not None:
+    stream_handler = logging.StreamHandler()
+    webapp.logger.addHandler(stream_handler)
+    webapp.logger.setLevel(logging.INFO)
+    webapp.logger.info('Capstone Insecure')
 
 # sets the session timeout to 10 minutes
 webapp.permanent_session_lifetime = timedelta(minutes=10)
@@ -128,6 +135,7 @@ def login():
                 return render_template('login.html')
             # if they've failed more than 3 attempts in the last 5 minutes, don't allow login
             elif result[0][6] >= 3 and difference[0] < 5:
+                webapp.logger.warning("Third attempt - Login unsuccessful, username: %s", username )
                 flash('Too many failed login attempts. Try again later', 'danger')
                 db_connection.close() # close connection before returning
                 return render_template('login.html')
@@ -149,6 +157,7 @@ def login():
                 user = User(user_id=result[0][0], username=result[0][1], password=result[0][2], email=result[0][3])
                 login_user(user)
                 session.permanent = True
+                webapp.logger.info("Login successful, username: %s", username )
                 flash('You have been logged in!', 'success')
                 next_page = request.args.get('next')
                 db_connection.close() # close connection before returning
@@ -167,10 +176,14 @@ def login():
                 cursor = execute_query(db_connection, query)  # run query
                 cursor.close()
 
+                webapp.logger.info("Login unsuccessful, attempt #%s, username: %s", result[0][6]+1, username )
                 flash('Login Unsuccessful. Please check username and password', 'danger')
                 db_connection.close() # close connection before returning
                 return render_template('login.html')
-
+        else:
+            webapp.logger.warning("Login unsuccessful, username not in DB: %s", username )
+            flash('Login Unsuccessful. Please check username and password', 'danger')
+            return render_template('login.html')
 
 @webapp.route('/logout')
 @login_required
@@ -247,8 +260,9 @@ def send_async_email(msg):
     with webapp.app_context():
         mail.send(msg)
 
-def send_email(subject, recipients, html_body):
+def send_email(subject, recipients, html_body, text_body):
     msg = Message(subject, recipients =recipients)
+    msg.body = text_body
     msg.html = html_body
     thr = Thread(target=send_async_email, args=[msg])
     thr.start()
@@ -260,7 +274,7 @@ def send_confirmation_email(user_email):
     html = render_template(
         'email_confirmation.html',
         confirm_url=confirm_url)
-    send_email('Confirm Your Email Address', [user_email], html)
+    send_email('Confirm Your Email Address', [user_email], html, "")
 
 def send_password_reset_email(user_email):
     token = generate_confirmation_token(user_email, webapp.config['RESET_PASSWORD_SALT'])
@@ -269,7 +283,7 @@ def send_password_reset_email(user_email):
     html = render_template(
         'email_passwordReset.html',
         password_reset_url=password_reset_url)
-    send_email('Password Reset', [user_email], html)
+    send_email('Password Reset', [user_email], html, "")
 
 #https://realpython.com/handling-email-confirmation-in-flask/
 def generate_confirmation_token(user_email, securityCheck):
@@ -293,6 +307,7 @@ def confirm_email(token):
     try:
         email = confirm_token(token, webapp.config['SECURITY_PASSWORD_SALT'])
     except:
+        webapp.logger.INFO("Confirmation link invalid or expired")
         flash('The confirmation link is invalid or has expired.', 'danger')
 
     db_connection = connect_to_database()
@@ -302,6 +317,7 @@ def confirm_email(token):
     #if email confirmed already
     print(rtn)
     if rtn[0][0]==1:
+        webapp.logger.info("Email: confirmation already processed. Email: %s", email )
         flash('Account already confirmed. Please login', 'success')
     else:
         # update emailConfirmed in DB
@@ -310,6 +326,7 @@ def confirm_email(token):
         cursor = execute_query(db_connection, query)
         cursor.close()
         db_connection.close()
+        webapp.logger.info("Email: confirmation successful. Email: %s", email)
         flash('Thank you for confirming your account!', 'success')
     return redirect(url_for('login'))
 
@@ -344,6 +361,7 @@ def passwordRecovery():
         rtn = cursor.fetchall()
         cursor.close()
         if (not any(email in i for i in rtn)):
+            webapp.logger.warning("Spoofing warning: email not registed: email: %s", email )
             flash('Email not registered, please try again', 'danger')
             db_connection.close() # close connection before returning
             return render_template('passwordRecovery.html')
@@ -355,6 +373,7 @@ def passwordRecovery():
             rtn = cursor.fetchall()
             cursor.close()
             if rtn[0][0] == 0:
+                webapp.logger.info("Email not confirmed before attempting password reset, email: %s", email)
                 flash('Email must be confirmed before attempting a password reset.','warning')
                 return render_template('login')
         #email matches
@@ -368,6 +387,7 @@ def passwordReset(token):
     try:
         email = confirm_token(token, webapp.config['RESET_PASSWORD_SALT'])
     except:
+        webapp.logger.info("The password reset link is invalid or has expired")
         flash('The password reset link is invalid or has expired.', 'danger')
         return redirect(url_for('login'))
     #user has passed tests, allow resetting of password
@@ -395,6 +415,7 @@ def passwordReset(token):
         cursor = execute_query(db_connection, query, data)
         cursor.close()
 
+        webapp.logger.info("Password reset. Email: %s", email)
         flash('Your password has been reset.', 'success')
         db_connection.close() # close connection before returning
         return redirect(url_for('login'))
@@ -438,13 +459,13 @@ def add_list():
     #('{}', \"{}\", \"{}\")".format(inputs['user_id'], inputs['list_name'], inputs['list_desc'])"""
     #execute_query(db_connection, query) # execute query
     cursor = db_connection.cursor()
+    webapp.logger.info("Adding list. user id: %s, list_name: %s, list_desc: %s", inputs['user_id'], inputs['list_name'], inputs ['list_desc'])
     cursor.callproc('addList', [inputs['user_id'], inputs['list_name'], inputs ['list_desc'], ])
     #Source for commit: https://dev.mysql.com/doc/connector-python/en/connector-python-api-mysqlconnection-commit.html
     db_connection.commit()
     cursor.close()
 
-    # should probably have some sort of error checking here to be sure it was added
-
+    #TODO: should probably have some sort of error checking here to be sure it was added
     db_connection.close() # close connection before returning
     return redirect(url_for('home'))
 
@@ -458,6 +479,8 @@ def delete_list(list_id):
     query = "DELETE FROM `lists` WHERE `list_id` = '{}'".format(list_id)
     cursor = execute_query(db_connection, query)
     cursor.close()
+
+    webapp.logger.info("Deleting list. userid: %s, listid: %s", current_user.id, list_id)
     flash('The list has been deleted.', 'info')
     db_connection.close() # close connection before returning
     return redirect(url_for('home'))
@@ -486,6 +509,7 @@ def update_list(list_id):
         cursor = execute_query(db_connection, query, data)
         cursor.close()
         db_connection.close() # close connection before returning
+        webapp.logger.info("Update list. userid: %s, list_id: %s, list_name: %s, list_desc: %s", current_user.id, list_id, request.form['list_name'], request.form['list_desc'])
         return redirect('/home')
 
 
@@ -507,6 +531,7 @@ def tasks(list_id):
     if rtn[0][0] != current_user.id:
         print(rtn)
         db_connection.close() # close connection before returning
+        webapp.logger.warning("Invalid access to view list. userid: %s", current_user.id)
         return redirect(url_for('invalid_access'))
 
     context = {}  # create context dictionary
@@ -530,6 +555,7 @@ def tasks(list_id):
     context['taskTypes'] = rtn
 
     db_connection.close() # close connection before returning
+    webapp.logger.info("View lists. User_id: %s", current_user.id)
     return render_template('tasks.html', context=context)
 
 @webapp.route('/invalid_access')
@@ -558,6 +584,7 @@ def add_task():
     db_connection.commit()
     cursor.close()
     db_connection.close() # close connection before returning
+    webapp.logger.info("List added. User_id: %s, list_id", current_user.id, inputs['list_id'])
     return redirect("/tasks/" + inputs['list_id'])
 
 @webapp.route('/delete_task/<list_id>/<task_id>')
@@ -572,6 +599,7 @@ def delete_task(task_id, list_id):
     rtn = cursor.fetchall()
     cursor.close()
     db_connection.close() # close connection before returning
+    webapp.logger.info("Delete from tasks. User_id: %s, list_id: %s, task_id: %s", current_user.id, list_id, task_id)
     return redirect('/tasks/' + list_id)
 
 
@@ -596,7 +624,7 @@ def update_task(list_id, task_id):
         rtn = cursor.fetchall()  # run query
         cursor.close()
         context['taskTypes'] = rtn
-
+        webapp.logger.info("View tasks. User_id: %s", current_user.id)
         db_connection.close() # close connection before returning
         return render_template('update_task.html', context=context)
     elif request.method == 'POST':
@@ -606,4 +634,5 @@ def update_task(list_id, task_id):
         rtn = cursor.fetchall()
         cursor.close()
         db_connection.close()
+        webapp.logger.info("Update tasks. User_id: %s, task_id: %s", current_user.id, task_id)
         return redirect('/tasks/' + list_id)
