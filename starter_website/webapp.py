@@ -46,7 +46,7 @@ def before_request():
     session.modified = True
 
 #TODO: Uncomment below to enforce HTTPS in production
-# Talisman(webapp)
+# Talisman(webapp, content_security_policy = webapp.config['TALISMAN_CSP'])
 
 
 @login_manager.user_loader
