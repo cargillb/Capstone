@@ -130,12 +130,12 @@ def login():
             #ensure they have confirmed their email
 
             if result[0][4]==0:
-                flash('Please confirm your email to log in', 'warning')
+                flash('Please confirm your email to log in', 'WARNING')
                 db_connection.close()
                 return render_template('login.html')
             # if they've failed more than 3 attempts in the last 5 minutes, don't allow login
             elif result[0][6] >= 3 and difference[0] < 5:
-                webapp.logger.warning("Third attempt - Login unsuccessful, username: %s", username )
+                webapp.logger.WARNING("Third attempt - Login unsuccessful, username: %s", username )
                 flash('Too many failed login attempts. Try again later', 'danger')
                 db_connection.close() # close connection before returning
                 return render_template('login.html')
@@ -176,12 +176,12 @@ def login():
                 cursor = execute_query(db_connection, query)  # run query
                 cursor.close()
 
-                webapp.logger.info("Login unsuccessful, attempt #%s, username: %s", result[0][6]+1, username )
+                webapp.logger.INFO("Login unsuccessful, attempt #%s, username: %s", result[0][6]+1, username )
                 flash('Login Unsuccessful. Please check username and password', 'danger')
                 db_connection.close() # close connection before returning
                 return render_template('login.html')
         else:
-            webapp.logger.warning("Login unsuccessful, username not in DB: %s", username )
+            webapp.logger.WARNING("Login unsuccessful, username not in DB: %s", username )
             flash('Login Unsuccessful. Please check username and password', 'danger')
             return render_template('login.html')
 
@@ -330,15 +330,6 @@ def confirm_email(token):
         flash('Thank you for confirming your account!', 'success')
     return redirect(url_for('login'))
 
-# @webapp.route("/reset_Password/<token>", methods=['GET', 'POST'])
-# def password_Reset(token):
-#     try:
-#         email = confirm_token(token)
-#     except:
-#         flash('The password reset link is invalid or has expired.', 'danger')
-#         return redirect(url_for('login'))
-#     else:
-#         return redirect(url_for('resetPassword'))
 
 #---------------------------- Password Recovery Routes ------------------------------
 
@@ -361,7 +352,7 @@ def passwordRecovery():
         rtn = cursor.fetchall()
         cursor.close()
         if (not any(email in i for i in rtn)):
-            webapp.logger.warning("Spoofing warning: email not registed: email: %s", email )
+            webapp.logger.WARNING("Spoofing warning: email not registed: email: %s", email )
             flash('Email not registered, please try again', 'danger')
             db_connection.close() # close connection before returning
             return render_template('passwordRecovery.html')
@@ -374,7 +365,7 @@ def passwordRecovery():
             cursor.close()
             if rtn[0][0] == 0:
                 webapp.logger.info("Email not confirmed before attempting password reset, email: %s", email)
-                flash('Email must be confirmed before attempting a password reset.','warning')
+                flash('Email must be confirmed before attempting a password reset.','WARNING')
                 return render_template('login')
         #email matches
             send_password_reset_email(email)
@@ -531,7 +522,7 @@ def tasks(list_id):
     if rtn[0][0] != current_user.id:
         print(rtn)
         db_connection.close() # close connection before returning
-        webapp.logger.warning("Invalid access to view list. userid: %s", current_user.id)
+        webapp.logger.WARNING("Invalid access to view list. userid: %s", current_user.id)
         return redirect(url_for('invalid_access'))
 
     context = {}  # create context dictionary
@@ -555,7 +546,7 @@ def tasks(list_id):
     context['taskTypes'] = rtn
 
     db_connection.close() # close connection before returning
-    webapp.logger.info("View lists. User_id: %s", current_user.id)
+    webapp.logger.info("View list. User_id: %s", current_user.id)
     return render_template('tasks.html', context=context)
 
 @webapp.route('/invalid_access')
