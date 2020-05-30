@@ -22,7 +22,7 @@ if os.environ.get('HEROKU') is not None:
     stream_handler = logging.StreamHandler()
     webapp.logger.addHandler(stream_handler)
     webapp.logger.setLevel(logging.INFO)
-    webapp.logger.info('Capstone Insecure')
+    webapp.logger.info('Capstone Secure')
 
 # sets the session timeout to 10 minutes
 webapp.permanent_session_lifetime = timedelta(minutes=10)
