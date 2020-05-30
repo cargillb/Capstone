@@ -59,8 +59,8 @@ def before_request():
 @login_manager.user_loader
 def load_user(user_id):
     db_connection = connect_to_database()  # connect to db
-    query = "SELECT * FROM users WHERE `user_id` ='{}'".format(user_id)
-    cursor = execute_query(db_connection, query)  # run query
+    cursor = db_connection.cursor()
+    cursor.callproc('getUser', [user_id, ])
     result = cursor.fetchall()
     cursor.close()
     id = result[0][0]
@@ -143,14 +143,16 @@ def login():
             # else check validation that user input matched query results - successful login
             elif username == result[0][1] and check_password_hash(result[0][2], password):  # check password against stored hash and salt
                 # reset login_attempts to 0
-                query = "UPDATE users SET login_attempts = 0 WHERE user_id = '{}'".format(result[0][0])
-                cursor = execute_query(db_connection, query)  # run query
+                cursor = db_connection.cursor()
+                cursor.callproc('resetLoginAttempts', [result[0][0], ])
+                db_connection.commit()
                 cursor.close()
 
                 # update last_login_attempt
                 formatted_date = current_time.strftime('%Y-%m-%d %H:%M:%S')
-                query = "UPDATE users SET last_login_attempt = '{}' WHERE user_id = '{}'".format(formatted_date, result[0][0])
-                cursor = execute_query(db_connection, query)  # run query
+                cursor = db_connection.cursor()
+                cursor.callproc('updateLoginTime', [formatted_date, result[0][0], ])
+                db_connection.commit()
                 cursor.close()
 
                 #log user in
@@ -166,14 +168,19 @@ def login():
             # else failed login attempt
             else:
                 # add one to login_attempts
-                query = "UPDATE users SET login_attempts = '{}' WHERE user_id = '{}'".format(result[0][6] + 1, result[0][0])
-                cursor = execute_query(db_connection, query)  # run query
+                #query = "UPDATE users SET login_attempts = '{}' WHERE user_id = '{}'".format(result[0][6] + 1, result[0][0])
+                #cursor = execute_query(db_connection, query)  # run query
+                incAttempts = result[0][6] + 1
+                cursor = db_connection.cursor()
+                cursor.callproc('updateLoginAttempts', [incAttempts, result[0][0], ])
+                db_connection.commit()
                 cursor.close()
 
                 # update last_login_attempt
                 formatted_date = current_time.strftime('%Y-%m-%d %H:%M:%S')
-                query = "UPDATE users SET last_login_attempt = '{}' WHERE user_id = '{}'".format(formatted_date, result[0][0])
-                cursor = execute_query(db_connection, query)  # run query
+                cursor = db_connection.cursor()
+                cursor.callproc('updateLoginTime', [formatted_date, result[0][0], ])
+                db_connection.commit()
                 cursor.close()
 
                 webapp.logger.info("Login unsuccessful, attempt #%s, username: %s", result[0][6]+1, username )
@@ -311,8 +318,8 @@ def confirm_email(token):
         flash('The confirmation link is invalid or has expired.', 'danger')
 
     db_connection = connect_to_database()
-    query = "SELECT emailConfirmed FROM users WHERE email='{}'".format(email)
-    cursor = execute_query(db_connection, query)
+    cursor = db_connection.cursor()
+    cursor.callproc('getEmailConfirmed', [email, ])
     rtn = cursor.fetchall()
     #if email confirmed already
     print(rtn)
@@ -322,8 +329,11 @@ def confirm_email(token):
     else:
         # update emailConfirmed in DB
         current_time = datetime.now()
-        query = "UPDATE users SET emailConfirmed='{}',confirmedOn='{}' WHERE email='{}'".format(1, current_time ,email)
-        cursor = execute_query(db_connection, query)
+        #query = "UPDATE users SET emailConfirmed='{}',confirmedOn='{}' WHERE email='{}'".format(1, current_time ,email)
+        #cursor = execute_query(db_connection, query)
+        cursor = db_connection.cursor()
+        cursor.callproc('updateEmailConfirm', [1, current_time, email, ])
+        db_connection.commit()
         cursor.close()
         db_connection.close()
         webapp.logger.info("Email: confirmation successful. Email: %s", email)
@@ -368,8 +378,8 @@ def passwordRecovery():
 
         #email matches but not confirmed
         else:
-            query = "SELECT emailConfirmed FROM users WHERE email = '{}'".format(email)
-            cursor = execute_query(db_connection, query)
+            cursor = db_connection.cursor()
+            cursor.callproc('getEmailConfirmed', [email, ])
             rtn = cursor.fetchall()
             cursor.close()
             if rtn[0][0] == 0:
@@ -409,10 +419,9 @@ def passwordReset(token):
 
         db_connection = connect_to_database()
         hashed_password = generate_password_hash(password, salt_length=8) # salt and hash password
-        print(email)
-        query = ('UPDATE `users` SET pword = %s WHERE email = %s;')
-        data = (hashed_password, email)
-        cursor = execute_query(db_connection, query, data)
+        cursor = db_connection.cursor()
+        cursor.callproc('setPassword', [hashed_password, email, ])
+        db_connection.commit()
         cursor.close()
 
         webapp.logger.info("Password reset. Email: %s", email)
@@ -430,14 +439,14 @@ def home():
     context = {}  # create context dictionary
     db_connection = connect_to_database()  # connect to db
 
-    query = "SELECT `username` FROM users WHERE `user_id` ='{}'".format(current_user.id)  # get username
-    cursor = execute_query(db_connection, query)
+    cursor = db_connection.cursor()
+    cursor.callproc('getUsername', [current_user.id, ])
     rtn = cursor.fetchall()
     cursor.close()
     context = {'user_name': rtn[0][0], 'user_id': current_user.id}
 
-    query = "SELECT * FROM `lists` WHERE `user_id` ='{}'".format(current_user.id)  # get list info for a user
-    cursor = execute_query(db_connection, query)
+    cursor = db_connection.cursor()
+    cursor.callproc('getUsersLists', [current_user.id, ])
     rtn = cursor.fetchall()
     cursor.close()
     context['rows'] = rtn  # rtn = list data
@@ -455,12 +464,9 @@ def add_list():
     db_connection = connect_to_database()
     inputs = request.form.to_dict(flat=True)  # get form inputs from request
 
-    # Old query = """INSERT INTO `lists` (`user_id`, `name`, `description`) VALUES
-    #('{}', \"{}\", \"{}\")".format(inputs['user_id'], inputs['list_name'], inputs['list_desc'])"""
-    #execute_query(db_connection, query) # execute query
     cursor = db_connection.cursor()
     webapp.logger.info("Adding list. user id: %s, list_name: %s, list_desc: %s", inputs['user_id'], inputs['list_name'], inputs ['list_desc'])
-    cursor.callproc('addList', [inputs['user_id'], inputs['list_name'], inputs ['list_desc'], ])
+    cursor.callproc('addList', [inputs['user_id'], inputs['list_name'], inputs['list_desc'], ])
     #Source for commit: https://dev.mysql.com/doc/connector-python/en/connector-python-api-mysqlconnection-commit.html
     db_connection.commit()
     cursor.close()
@@ -476,8 +482,9 @@ def delete_list(list_id):
     Route to delete a list
     """
     db_connection = connect_to_database()
-    query = "DELETE FROM `lists` WHERE `list_id` = '{}'".format(list_id)
-    cursor = execute_query(db_connection, query)
+    cursor = db_connection.cursor()
+    cursor.callproc('deleteList', [list_id, ])
+    db_connection.commit()
     cursor.close()
 
     webapp.logger.info("Deleting list. userid: %s, listid: %s", current_user.id, list_id)
@@ -496,17 +503,17 @@ def update_list(list_id):
 
     # display current data
     if request.method == 'GET':
-        query = "SELECT * FROM `lists` WHERE `list_id` ='{}'".format(list_id)  # get info of list
-        cursor = execute_query(db_connection, query)
+        cursor = db_connection.cursor()
+        cursor.callproc('getList', [list_id, ])
         rtn = cursor.fetchall()
         cursor.close()
         context = {'list_id': rtn[0][0], 'list_name': rtn[0][2], 'list_desc': rtn[0][3]}
         db_connection.close() # close connection before returning
         return render_template('update_list.html', context=context)
     elif request.method == 'POST':
-        query = "UPDATE `lists` SET `name` = %s, `description` = %s WHERE `list_id` = %s"
-        data = (request.form['list_name'], request.form['list_desc'], list_id)
-        cursor = execute_query(db_connection, query, data)
+        cursor = db_connection.cursor()
+        cursor.callproc('updateList', [request.form['list_name'], request.form['list_desc'], list_id, ])
+        db_connection.commit()
         cursor.close()
         db_connection.close() # close connection before returning
         webapp.logger.info("Update list. userid: %s, list_id: %s, list_name: %s, list_desc: %s", current_user.id, list_id, request.form['list_name'], request.form['list_desc'])
