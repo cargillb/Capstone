@@ -52,7 +52,7 @@ login_manager.login_message_category = "info"
 def before_request():
     session.modified = True
 
-#TODO: Uncomment below to enforce HTTPS in production
+# TODO: Uncomment below to enforce HTTPS in production
 # Talisman(webapp, content_security_policy = webapp.config['TALISMAN_CSP'])
 
 
@@ -135,7 +135,7 @@ def login():
                 return render_template('login.html')
             # if they've failed more than 3 attempts in the last 5 minutes, don't allow login
             elif result[0][6] >= 3 and difference[0] < 5:
-                webapp.logger.WARNING("Third attempt - Login unsuccessful, username: %s", username )
+                webapp.logger.warning("Third attempt - Login unsuccessful, username: %s", username )
                 flash('Too many failed login attempts. Try again later', 'danger')
                 db_connection.close() # close connection before returning
                 return render_template('login.html')
@@ -158,6 +158,7 @@ def login():
                 #log user in
                 user = User(user_id=result[0][0], username=result[0][1], password=result[0][2], email=result[0][3])
                 login_user(user)
+
                 session.permanent = True
                 webapp.logger.info("Login successful, username: %s", username )
                 flash('You have been logged in!', 'success')
@@ -183,12 +184,12 @@ def login():
                 db_connection.commit()
                 cursor.close()
 
-                webapp.logger.INFO("Login unsuccessful, attempt #%s, username: %s", result[0][6]+1, username )
+                webapp.logger.info("Login unsuccessful, attempt #%s, username: %s", result[0][6]+1, username )
                 flash('Login Unsuccessful. Please check username and password', 'danger')
                 db_connection.close() # close connection before returning
                 return render_template('login.html')
         else:
-            webapp.logger.WARNING("Login unsuccessful, username not in DB: %s", username )
+            webapp.logger.warning("Login unsuccessful, username not in DB: %s", username )
             flash('Login Unsuccessful. Please check username and password', 'danger')
             return render_template('login.html')
 
@@ -271,6 +272,7 @@ def send_email(subject, recipients, html_body, text_body):
     msg = Message(subject, recipients =recipients)
     msg.body = text_body
     msg.html = html_body
+
     thr = Thread(target=send_async_email, args=[msg])
     thr.start()
 
@@ -309,18 +311,19 @@ def confirm_token(token, securityCheck, expiration=3600):
         return False
     return email
 
-@webapp.route('/confirm/<token>')
+@webapp.route('/confirm/<token>', methods=['GET'])
 def confirm_email(token):
     try:
         email = confirm_token(token, webapp.config['SECURITY_PASSWORD_SALT'])
     except:
-        webapp.logger.INFO("Confirmation link invalid or expired")
+        webapp.logger.info("Confirmation link invalid or expired")
         flash('The confirmation link is invalid or has expired.', 'danger')
 
     db_connection = connect_to_database()
     cursor = db_connection.cursor()
     cursor.callproc('getEmailConfirmed', [email, ])
     rtn = cursor.fetchall()
+    cursor.close()
     #if email confirmed already
     print(rtn)
     if rtn[0][0]==1:
@@ -362,7 +365,7 @@ def passwordRecovery():
         rtn = cursor.fetchall()
         cursor.close()
         if (not any(email in i for i in rtn)):
-            webapp.logger.WARNING("Spoofing warning: email not registed: email: %s", email )
+            webapp.logger.warning("Spoofing warning: email not registed: email: %s", email )
             flash('Email not registered, please try again', 'danger')
             db_connection.close() # close connection before returning
             return render_template('passwordRecovery.html')
@@ -435,7 +438,6 @@ def home():
     rtn = cursor.fetchall()
     cursor.close()
     context = {'user_name': rtn[0][0], 'user_id': current_user.id}
-
     cursor = db_connection.cursor()
     cursor.callproc('getUsersLists', [current_user.id, ])
     rtn = cursor.fetchall()
@@ -462,7 +464,6 @@ def add_list():
     db_connection.commit()
     cursor.close()
 
-    #TODO: should probably have some sort of error checking here to be sure it was added
     db_connection.close() # close connection before returning
     return redirect(url_for('home'))
 
@@ -529,7 +530,7 @@ def tasks(list_id):
     if rtn[0][0] != current_user.id:
         print(rtn)
         db_connection.close() # close connection before returning
-        webapp.logger.WARNING("Invalid access to view list. userid: %s", current_user.id)
+        webapp.logger.warning("Invalid access to view list. userid: %s", current_user.id)
         return redirect(url_for('invalid_access'))
 
     context = {}  # create context dictionary
