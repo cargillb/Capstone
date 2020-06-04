@@ -327,6 +327,7 @@ def confirm_email(token):
     #if email confirmed already
     print(rtn)
     if rtn[0][0]==1:
+        db_connection.close()
         webapp.logger.info("Email: confirmation already processed. Email: %s", email )
         flash('Account already confirmed. Please login', 'success')
     else:
@@ -377,6 +378,7 @@ def passwordRecovery():
             rtn = cursor.fetchall()
             cursor.close()
             if rtn[0][0] == 0:
+                db_connection.close()
                 webapp.logger.info("Email not confirmed before attempting password reset, email: %s", email)
                 flash('Email must be confirmed before attempting a password reset.','WARNING')
                 return render_template('login')

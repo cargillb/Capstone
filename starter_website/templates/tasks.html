@@ -17,7 +17,7 @@
 		</thead>
 		<tbody>
 		{% for row in context.rows %}
-		<tr> 
+		<tr>
 			<td>
 				{{ row[5] }}  <!-- dataType name -->
 			</td>
@@ -31,12 +31,12 @@
 					Yes
 				{% endif %}
 			</td>
-			<td>                   
+			<td>
 				<div>
 					<a class="btn btn-outline-warning" href="{{ url_for('update_task', list_id=context.list_id, task_id=row[0]) }}">Edit</a>
        			</div>
 			</td>
-			<td>                   
+			<td>
 				<div>
 					<a class="btn btn-outline-warning" href="{{ url_for('delete_task', list_id=context.list_id, task_id=row[0]) }}">Delete</a>
         		</div>
